@@ -4,25 +4,54 @@ defmodule Geocoder.Worker do
 
   # Public API
   def geocode(q, opts \\ []) do
-    assign(:geocode, q, opts)
+    geocode_list(q, opts) |> head
   end
 
   def geocode_list(q, opts \\ []) do
-    assign(:geocode_list, q, opts)
+    assign(:geocode, q, opts) |> tail
   end
 
   def reverse_geocode(q, opts \\ []) do
-    assign(:reverse_geocode, q, opts)
+    reverse_geocode_list(q, opts) |> head
   end
 
   def reverse_geocode_list(q, opts \\ []) do
-    assign(:reverse_geocode_list, q, opts)
+    assign(:reverse_geocode, q, opts) |> tail
+  end
+
+  @doc """
+    Changes the default provider on the fly.
+
+    Accepts both the module, representing provider or an instance of struct.
+
+    Currently supported protocols:
+    - `Geocoder.GoogleMaps`
+    - `Geocoder.Providers.OpenStreetMaps`
+  """
+  def provider!(provider) do
+    cast_to = case provider do
+      Geocoder.GoogleMaps -> provider
+      Geocoder.Providers.OpenStreetMaps -> provider
+      _ -> case Geocoder.Data.impl_for(provider) do
+             Geocoder.Data.Geocoder.GoogleMaps -> Geocoder.GoogleMaps
+             Geocoder.Data.Geocoder.Providers.OpenStreetMaps -> Geocoder.Providers.OpenStreetMaps
+             _ -> raise ArgumentError, message: "Provider must implement Geocoder.Data protocol: #{inspect(provider)}"
+           end
+    end
+    assign(:set_provider, [cast_to], store: false)
+  end
+
+  @doc """
+    Returns current provider.
+  """
+  def provider? do
+    assign(:get_provider, nil, store: false)
   end
 
   # GenServer API
   @worker_defaults [
     store: Geocoder.Store,
-    provider: Geocoder.Providers.GoogleMaps # or OpenStreetMaps
+    provider: Geocoder.GoogleMaps # OpenStreetMaps
   ]
   def init(conf) do
     {:ok, Keyword.merge(@worker_defaults, conf)}
@@ -30,6 +59,14 @@ defmodule Geocoder.Worker do
 
   def start_link(conf) do
     GenServer.start_link(__MODULE__, conf)
+  end
+
+  def handle_call({:set_provider, [provider], _opts}, _from, conf) do
+    {:reply, {:ok, conf[:provider]}, conf |> put_in([:provider], provider)}
+  end
+
+  def handle_call({:get_provider, _stub, _opts}, _from, conf) do
+    {:reply, {:ok, conf[:provider]}, conf}
   end
 
   def handle_call({function, q, opts}, _from, conf) do
@@ -61,14 +98,13 @@ defmodule Geocoder.Worker do
     :poolboy.transaction(Geocoder.pool_name, function, opts[:timeout])
   end
 
-  defp run(function, q, conf, _) when function == :geocode_list or function == :reverse_geocode_list do
-    apply(conf[:provider], function, [additionnal_conf(q, conf)])
-  end
   defp run(function, conf, q, false) do
-    apply(conf[:provider], function, [additionnal_conf(q, conf)])
-    |> tap(&conf[:store].update/1)
-    |> tap(&conf[:store].link(q, &1))
+    {q, params} = {q[:address] || q[:latlng] || q, Geocoder.QueryParams.new(q)}
+    Geocoder.Providers.Provider.go!(q, params, conf[:provider])
+      |> tap(&conf[:store].update/1)
+      |> tap(&conf[:store].link(q, &1))
   end
+
   defp run(function, q, conf, true) do
     case apply(conf[:store], function, [additionnal_conf(q, conf)]) do
       {:just, coords} ->
@@ -81,4 +117,12 @@ defmodule Geocoder.Worker do
   defp additionnal_conf(q, conf) do
     Keyword.merge(q, Keyword.drop(conf, [:store, :provider]))
   end
+
+  defp head({:ok, [data|_]}), do: {:ok, data}
+  defp head({:ok, data}), do: {:ok, data}
+  defp head(data), do: data
+
+  defp tail({:ok, data}) when is_list(data), do: {:ok, data}
+  defp tail({:ok, data}), do: {:ok, [data]}
+  defp tail(data), do: data
 end

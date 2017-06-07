@@ -11,8 +11,8 @@ defmodule Geocoder.Store do
     GenServer.call(name(), {:reverse_geocode, opts[:latlng]})
   end
 
-  def update(location) do
-    GenServer.call(name(), {:update, location})
+  def update(data) do
+    GenServer.call(name, {:update, data})
   end
 
   def link(from, to) do
@@ -45,19 +45,9 @@ defmodule Geocoder.Store do
   end
 
   # Update store
-  def handle_call({:update, coords}, _from, {links,store,opts}) do
-    %{lat: lat, lon: lon} = coords
-    location =
-      coords.location
-      |> Map.take(~w[city, state, country]a)
-      |> Enum.filter_map(&is_binary(elem(&1, 1)), &elem(&1, 1))
-      |> Enum.join("")
-
-    key = encode({lat, lon}, opts[:precision])
-    link = encode(location)
-
-    state = {Map.put(links, link, key), Map.put(store, key, coords), opts}
-    {:reply, coords, state}
+  def handle_call({:update, data}, from, {links, store, opts}) when is_list(data) do
+    {l, s} = data |> Enum.reduce({links, store}, &update_single(&2, &1, opts[:precision]))
+    {:reply, data, {l, s, opts}}
   end
 
   # Get the state
@@ -65,12 +55,13 @@ defmodule Geocoder.Store do
     {:reply, state, state}
   end
 
-  # Link a query to a cached value
-  def handle_cast({:link, from, %{lat: lat, lon: lon}}, {links, store, opts}) do
-    key = encode({lat, lon}, opts[:precision])
-    link = encode(from[:address] || from[:latlng], opts[:precision])
-    {:noreply, {Map.put(links, link, key), store, opts}}
+  # Link a query to a cached values (many values)
+  def handle_cast({:link, from, data}, {links, store, opts}) when is_list(data) do
+    map = data |> Enum.reduce(links, &link_single(&2, from, &1, opts[:precision]))
+    {:noreply, {map, store, opts}}
   end
+
+  ##############################################################################
 
   # Private API
   defp encode(location, opt \\ nil)
@@ -88,4 +79,38 @@ defmodule Geocoder.Store do
   # Config
   @name :geocoder_store
   def name, do: @name
+
+  ##############################################################################
+
+  defp link_single(links, from, data, precision) do
+    %Geocoder.Coords{lat: lat, lon: lon} = data |> Geocoder.Data.latlng
+    {k, v} = {encode(from, precision), encode({lat, lon}, precision)}
+    {_, map} = Map.get_and_update(links, k, fn current_value ->
+      neu = if is_list(current_value), do: current_value ++ [v], else: [v]
+      {current_value, neu}
+    end)
+    map
+  end
+
+  defp update_single({store, links}, data, precision) do
+    %{lat: lat, lon: lon} = data |> Geocoder.Data.latlng
+    location =
+      data |> Geocoder.Data.location
+      |> Map.take(~w[city, state, country]a)
+      |> Enum.filter_map(&is_binary(elem(&1, 1)), &elem(&1, 1))
+      |> Enum.join("")
+
+    key = encode({lat, lon}, precision)
+    link = encode(location, precision)
+
+    {_, l} = Map.get_and_update(links, link, fn current_value ->
+      neu = if is_list(current_value), do: current_value ++ [key], else: [key]
+      {current_value, neu}
+    end)
+    {_, s} = Map.get_and_update(store, key, fn current_value ->
+      neu = if is_list(current_value), do: current_value ++ [data], else: [data]
+      {current_value, neu}
+    end)
+    {l, s}
+  end
 end
