@@ -103,6 +103,7 @@ defmodule Geocoder.GoogleMaps do
       nil      -> one_from_map(data)
       # [one]    -> one_from_map(one)
       [_ | _]  -> result |> Enum.map(&one_from_map(&1))
+      _ -> nil
     end
   end
 

@@ -56,23 +56,23 @@ defmodule GeocoderTest do
 
     # Bounds are not always returned
     assert (nil == bounds.bottom) || (bounds.bottom |> Float.round == 51)
-    assert (nil == bounds.left) || (bounds.left |> Float.round(1) == 3.7)
-    assert (nil == bounds.right) || (bounds.right |> Float.round(1) == 3.7)
+    assert (nil == bounds.left) || (bounds.left |> Float.round == 4)
+    assert (nil == bounds.right) || (bounds.right |> Float.round == 4)
     assert (nil == bounds.top) || (bounds.top |> Float.round == 51)
 
     location = coords |> Geocoder.Data.location
-    assert nil == location.street_number || location.street_number == "46"
-    assert location.street == "Dikkelindestraat"
-    assert location.city == "Gent" || location.city == "Ghent"
-    assert location.country == "Belgium"
-    assert location.country_code |> String.upcase == "BE"
-    assert location.postal_code == "9032"
+    assert (nil == location.street_number) || location.street_number == "46"
+    assert (nil == location.street) || location.street == "Dikkelindestraat"
+    assert (nil == location.city) || location.city == "Gent" || location.city == "Ghent"
+    assert (nil == location.country) || location.country == "Belgium"
+    assert (nil == location.country_code) || location.country_code |> String.upcase == "BE"
+    assert (nil == location.postal_code) || location.postal_code == "9032"
     #      lhs:  "Dikkelindestraat, Wondelgem, Ghent, Gent, East Flanders, Flanders, 9032, Belgium"
     #      rhs:  "Dikkelindestraat 46, 9032 Gent, Belgium"
-    assert location.formatted_address |> String.match?(~r/Dikkelindestraat/)
-    assert location.formatted_address |> String.match?(~r/Gent/) || location.formatted_address |> String.match?(~r/Ghent/)
-    assert location.formatted_address |> String.match?(~r/9032/)
-    assert location.formatted_address |> String.match?(~r/Belgium/)
+    assert (nil == location.formatted_address) || location.formatted_address |> String.match?(~r/Dikkelindestraat/)
+    assert (nil == location.formatted_address) || location.formatted_address |> String.match?(~r/Gent/) || location.formatted_address |> String.match?(~r/Ghent/)
+    assert (nil == location.formatted_address) || location.formatted_address |> String.match?(~r/9032/)
+    assert (nil == location.formatted_address) || location.formatted_address |> String.match?(~r/Belgium/)
 
     %Geocoder.Coords{lat: lat, lon: lon} = coords |> Geocoder.Data.latlng
     assert lat |> Float.round == 51
